@@ -14,9 +14,9 @@ Stack: HTML/CSS/JS biasa + Supabase (database + login Google). Hosting: GitHub P
 1. **Supabase**: buat projek baru, region Singapore (projek sebenar: Tokyo, ap-northeast-1, ok juga).
 2. **SQL Editor**: paste `supabase/schema.sql`. Tukar baris terakhir kepada email dan nama ketua panitia, buang `--` di depannya, kemudian Run.
 3. **Login Google**: Authentication > Sign In / Providers > Google. Perlu Client ID dan Secret dari Google Cloud Console (OAuth client jenis Web). Authorized redirect URI: `https://<project>.supabase.co/auth/v1/callback`.
-4. **URL Configuration**: Authentication > URL Configuration. Site URL dan Redirect URLs = alamat GitHub Pages, iaitu `https://afiqaizat7757-castello.github.io/pi-smart-tracker/`.
+4. **URL Configuration**: Authentication > URL Configuration. Site URL dan Redirect URLs = alamat GitHub Pages, iaitu `https://afiqaizat7757-castello.github.io/PI-SMART-TRACKER/`.
 5. **config.js**: isi `url` dan `anonKey` (Settings > API). Jangan sesekali letak `service_role` key.
-6. **GitHub Pages**: fail app ada di root repo; Pages serve dari branch `main`, folder `/`. Alamat: https://afiqaizat7757-castello.github.io/pi-smart-tracker/
+6. **GitHub Pages**: fail app ada di root repo; Pages serve dari branch `main`, folder `/`. Alamat: https://afiqaizat7757-castello.github.io/PI-SMART-TRACKER/
 
 ## PDPA
 - Simpan nama murid sahaja. Tiada IC, alamat atau nombor telefon.
