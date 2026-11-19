@@ -145,6 +145,12 @@ create policy yth_akses on public.yasin_tidak_hadir for all to authenticated
   with check (public.boleh_akses_murid(murid_id)
           and exists (select 1 from public.yasin_sesi s where s.id = sesi_id and public.boleh_akses_kelas(s.kelas_id)));
 
+-- ============ GRANT (projek Supabase baharu mungkin tak beri akses jadual secara automatik) ============
+-- Selamat: RLS di atas masih menapis setiap baris.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+
 -- ============ DATA AWAL ============
 insert into public.kelas (tingkatan, nama)
 select t, n from generate_series(1,5) t,

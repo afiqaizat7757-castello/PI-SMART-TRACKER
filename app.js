@@ -44,7 +44,8 @@ async function boot() {
   if (!session) return showLogin();
   const email = (session.user.email || "").toLowerCase();
   const { data: me, error } = await sb.from("guru").select("*").eq("email", email).eq("aktif", true).maybeSingle();
-  if (error || !me) return showNotRegistered(email);
+  if (error) return showError("Tak dapat baca senarai guru: " + error.message + (error.code ? " (" + error.code + ")" : ""));
+  if (!me) return showNotRegistered(email);
   state.me = me;
   renderTop();
   const { data: kelas, error: ek } = await sb.from("kelas").select("*");
@@ -69,6 +70,10 @@ function showNotRegistered(email) {
   $("#app").replaceChildren(el("div", { class: "login card" },
     el("strong", {}, "Akaun belum didaftarkan"),
     el("p", { class: "hint" }, "Email " + email + " belum ada dalam senarai guru. Minta ketua panitia Pendidikan Islam daftarkan email ini, kemudian log masuk semula.")));
+}
+function showError(msg) {
+  $("#topright").replaceChildren(el("button", { class: "linkbtn", onclick: logout }, "Log keluar"));
+  $("#app").replaceChildren(el("div", { class: "login card" }, el("strong", {}, "Ralat sambungan database"), el("p", { class: "hint" }, msg)));
 }
 async function logout() { await sb.auth.signOut(); location.reload(); }
 
