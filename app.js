@@ -8,6 +8,10 @@ const RUKUN = ["Niat","Berdiri betul (qiyam)","Takbiratul ihram","Membaca al-Fat
 const BIDANG = ["Tilawah al-Quran","Hafazan","Akidah","Ibadah","Sirah","Adab & akhlak","Jawi"];
 const QRUB = [["tajwid","Tajwid"],["makhraj","Makhraj huruf"],["kelancaran","Kelancaran"],["fasohah","Fasohah"]];
 const TAHAP = ["Iqra' 1-3","Iqra' 4-6","Al-Quran Juz 1-10","Al-Quran Juz 11-20","Al-Quran Juz 21-30","Khatam"];
+const JUZ_AMMA = ["An-Naba'", "An-Nazi'at", "'Abasa", "At-Takwir", "Al-Infitar", "Al-Mutaffifin", "Al-Insyiqaq", "Al-Buruj", "At-Tariq", "Al-A'la", "Al-Ghasyiyah", "Al-Fajr", "Al-Balad", "Asy-Syams", "Al-Lail", "Ad-Dhuha", "Asy-Syarh", "At-Tin", "Al-'Alaq", "Al-Qadr", "Al-Bayyinah", "Az-Zalzalah", "Al-'Adiyat", "Al-Qari'ah", "At-Takathur", "Al-'Asr", "Al-Humazah", "Al-Fil", "Quraisy", "Al-Ma'un", "Al-Kauthar", "Al-Kafirun", "An-Nasr", "Al-Masad", "Al-Ikhlas", "Al-Falaq", "An-Nas"];
+const SURAH_PILIHAN = ["Al-Fatihah", "Ayat al-Kursi", "Yasin", "Al-Mulk", "Al-Waqi'ah", "Ar-Rahman", "As-Sajdah", "Al-Kahfi (10 ayat awal)"];
+// Mushaf Rasm Uthmani 604 muka surat: Juz 1 = ms 1-21, juz seterusnya setiap 20 ms bermula ms 22
+const juzDariMs = ms => ms < 22 ? 1 : Math.min(30, Math.floor((ms - 22) / 20) + 2);
 const SUSUNAN_KELAS = ["UM","UPM","UKM","UTM","UIA","USM"];
 // Wajaran markah keseluruhan
 const W = { solat: 0.3, quran: 0.3, tp: 0.4 };
@@ -121,11 +125,16 @@ async function ambilKelas(kid) {
     return {
       id: x.id, nama: titleCase(x.nama),
       solat: s?.rukun ? [...s.rukun] : Array(13).fill(false),
-      quran: { tajwid: q.tajwid ?? null, makhraj: q.makhraj ?? null, kelancaran: q.kelancaran ?? null, fasohah: q.fasohah ?? null, tahap: q.tahap ?? null, hafazan: q.hafazan ?? null },
+      quran: { tajwid: q.tajwid ?? null, makhraj: q.makhraj ?? null, kelancaran: q.kelancaran ?? null, fasohah: q.fasohah ?? null, tahap: q.tahap ?? null, hafazan: q.hafazan ?? null, hafazan_surah: q.hafazan_surah || [] },
       tp: BIDANG.map(b => T.find(t => t.murid_id === x.id && t.bidang === b)?.tp ?? null),
       catatan: c?.catatan || "",
     };
   });
+  if (ids.length) {
+    const { data: bl, error: eb } = await sb.from("bacaan_log").select("id,murid_id,tarikh,jenis,jilid,muka_surat,catatan").in("murid_id", ids).order("created_at", { ascending: false }).limit(3000);
+    state.bacaanReady = !eb;
+    for (const s of murid) s.bacaan = eb ? [] : bl.filter(b => b.murid_id === s.id);
+  }
   const { data: ses, error: ey } = await sb.from("yasin_sesi").select("id,tarikh,yasin_tidak_hadir(murid_id)").eq("kelas_id", kid);
   if (ey) throw ey;
   const yasin = {};
@@ -154,13 +163,13 @@ function barisExport(k, d) {
     return d.murid.map(s => {
       const sc = scores(s), y = yasinStat(s);
       return [k.tingkatan, k.nama, s.nama, s.solat.filter(Boolean).length, r1(sc.solat),
-        s.quran.tajwid, s.quran.makhraj, s.quran.kelancaran, s.quran.fasohah, s.quran.tahap == null ? "" : TAHAP[s.quran.tahap], s.quran.hafazan, r1(sc.quran),
+        s.quran.tajwid, s.quran.makhraj, s.quran.kelancaran, s.quran.fasohah, s.quran.tahap == null ? "" : TAHAP[s.quran.tahap], s.bacaan?.[0] ? posisi(s.bacaan[0]) + " (" + dmy(s.bacaan[0].tarikh) + ")" : "", s.quran.hafazan, JUZ_AMMA.filter(n => (s.quran.hafazan_surah || []).includes(n)).length, r1(sc.quran),
         ...s.tp.map(v => v == null ? "" : "TP" + v), r1(sc.tp), y.sesi ? y.hadir + "/" + y.sesi : "", r1(y.pct), r1(sc.total),
         lencana(s, { nombor1: n1 === s.id }).filter(b => b.dapat).map(b => b.nama).join("; "), s.catatan];
     });
   } finally { state.murid = simpan.murid; state.yasin = simpan.yasin; }
 }
-const KEPALA = ["Tingkatan", "Kelas", "Nama murid", "Rukun solat dikuasai (/13)", "Amali solat %", "Tajwid", "Makhraj", "Kelancaran", "Fasohah", "Tahap bacaan", "Surah hafazan", "Al-Quran %",
+const KEPALA = ["Tingkatan", "Kelas", "Nama murid", "Rukun solat dikuasai (/13)", "Amali solat %", "Tajwid", "Makhraj", "Kelancaran", "Fasohah", "Tahap bacaan", "Bacaan terkini", "Surah hafazan", "Juz Amma dihafaz (/37)", "Al-Quran %",
   ...BIDANG.map(b => "TP " + b), "Purata TP %", "Hadir Yasin", "Yasin %", "Markah keseluruhan", "Lencana", "Catatan guru"];
 function muatTurun(nama, rows) {
   const csv = "\uFEFF" + [KEPALA, ...rows].map(r => r.map(selCSV).join(",")).join("\r\n");
@@ -205,7 +214,23 @@ const pct = v => v == null ? "-" : Math.round(v) + "%";
 
 // ---------- simpan ----------
 async function simpanSolat(s) { const { error } = await sb.from("penilaian_solat").upsert({ murid_id: s.id, rukun: s.solat, ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
-async function simpanQuran(s) { const { error } = await sb.from("penilaian_quran").upsert({ murid_id: s.id, ...s.quran, ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+async function simpanQuran(s) {
+  const { hafazan_surah, ...q } = s.quran; const row = { murid_id: s.id, ...q, ...stamp() };
+  if (state.bacaanReady) row.hafazan_surah = hafazan_surah;   // lajur ini wujud selepas kemas-kini-03
+  const { error } = await sb.from("penilaian_quran").upsert(row); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+const tahapDari = b => !b ? null : b.jenis === "iqra" ? (b.jilid <= 3 ? 0 : 1) : (b.muka_surat >= 604 ? 5 : juzDariMs(b.muka_surat) <= 10 ? 2 : juzDariMs(b.muka_surat) <= 20 ? 3 : 4);
+const posisi = b => !b ? "Belum direkod" : b.jenis === "iqra" ? "Iqra' " + b.jilid + " · ms " + b.muka_surat : "Al-Quran · Juz " + juzDariMs(b.muka_surat) + " · ms " + b.muka_surat;
+async function simpanBacaan(s, b) {
+  const { data, error } = await sb.from("bacaan_log").insert({ murid_id: s.id, ...b, direkod_oleh: state.me.id }).select("id,murid_id,tarikh,jenis,jilid,muka_surat,catatan").single();
+  if (error) return gagal(error);
+  s.bacaan = [data, ...(s.bacaan || [])];
+  const t = tahapDari(data); if (t != null && t !== s.quran.tahap) { s.quran.tahap = t; await simpanQuran(s); } else toast("Bacaan direkod");
+  render();
+}
+async function padamBacaan(s, id) {
+  const { error } = await sb.from("bacaan_log").delete().eq("id", id); if (error) return gagal(error);
+  s.bacaan = s.bacaan.filter(b => b.id !== id); toast("Rekod dipadam"); render();
+}
 async function simpanTP(s, i) { const { error } = await sb.from("penilaian_tp").upsert({ murid_id: s.id, bidang: BIDANG[i], tp: s.tp[i], ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
 // Gambaran markah sehari sekali (baris terakhir hari itu menang) untuk graf perkembangan
 const r1 = v => v == null ? null : Math.round(v * 10) / 10;
@@ -247,7 +272,7 @@ function lencana(s, ctx = {}) {
   return [
     { k: "solat", ikon: "check", nama: "Solat Sempurna", syarat: "Kuasai semua 13 rukun solat", dapat: s.solat.every(Boolean) },
     { k: "qari", ikon: "mic", nama: "Bacaan Mantap", syarat: "Tajwid, makhraj, kelancaran dan fasohah 4 ke atas", dapat: QRUB.every(([k]) => (q[k] ?? 0) >= 4) },
-    { k: "juzamma", ikon: "book", nama: "Hafiz Juz Amma", syarat: "Hafaz 37 surah (Juz Amma)", dapat: (q.hafazan ?? 0) >= 37 },
+    { k: "juzamma", ikon: "book", nama: "Hafiz Juz Amma", syarat: "Hafaz semua 37 surah Juz Amma", dapat: JUZ_AMMA.every(n => (q.hafazan_surah || []).includes(n)) },
     { k: "khatam", ikon: "khatam", nama: "Khatam al-Quran", syarat: "Tahap bacaan: Khatam", dapat: q.tahap === 5 },
     { k: "yasin", ikon: "moon", nama: "Istiqamah Yasin", syarat: "Hadir Yasin 8 Jumaat berturut-turut (sekarang " + st + ")", dapat: st >= 8 },
     { k: "tp", ikon: "star", nama: "TP Cemerlang", syarat: "TP5 ke atas dalam semua 7 bidang", dapat: s.tp.every(v => (v ?? 0) >= 5) },
@@ -324,6 +349,49 @@ function solatKelas() {
       el("thead", {}, el("tr", {}, el("th", { class: "sticky" }, "Murid"), RUKUN.map((r, i) => el("th", { class: "cb", title: r }, String(i + 1))), el("th", { class: "num" }, "Jumlah"), el("th", {}, ""))),
       el("tbody", {}, rows))),
     el("details", { class: "legend" }, el("summary", {}, "Senarai 13 rukun"), el("ol", {}, RUKUN.map(r => el("li", {}, r)))));
+}
+
+function kadBacaan(s) {
+  const last = s.bacaan?.[0];
+  const st = state.bacaanForm && state.bacaanForm.sid === s.id ? state.bacaanForm : (state.bacaanForm = { sid: s.id, jenis: last?.jenis || "iqra", jilid: last?.jilid || 1 });
+  // peratus perjalanan: Iqra' 1-6 dikira 0-100% sendiri; al-Quran ikut 604 muka surat
+  const peratus = !last ? 0 : last.jenis === "iqra" ? Math.min(100, ((last.jilid - 1) + Math.min(last.muka_surat, 30) / 30) / 6 * 100) : Math.min(100, last.muka_surat / 604 * 100);
+  const seg = el("div", { class: "seg" }, [["iqra", "Iqra'"], ["quran", "Al-Quran"]].map(([k, l]) => el("button", { "aria-pressed": String(st.jenis === k), onclick: () => { st.jenis = k; render(); } }, l)));
+  const jil = el("select", { id: "b-jilid", "aria-label": "Jilid Iqra'", onchange: e => st.jilid = +e.target.value }, [1, 2, 3, 4, 5, 6].map(n => { const o = el("option", { value: n }, "Iqra' " + n); if (n === st.jilid) o.selected = true; return o; }));
+  const juzInfo = el("span", { class: "hint" }, "");
+  const ms = el("input", { type: "text", inputmode: "numeric", id: "b-ms", placeholder: st.jenis === "iqra" ? "cth: 12" : "1 - 604", style: "width:110px",
+    oninput: e => { const v = parseInt(e.target.value, 10); juzInfo.textContent = st.jenis === "quran" && v >= 1 && v <= 604 ? "= Juz " + juzDariMs(v) : ""; } });
+  const nota = el("input", { type: "text", id: "b-nota", placeholder: "Catatan (pilihan), cth: lemah mad asli", maxlength: "300", style: "flex:1;min-width:180px" });
+  const simpan = el("button", { class: "btn", onclick: () => {
+    const v = parseInt(ms.value, 10), max = st.jenis === "iqra" ? 60 : 604;
+    if (!(v >= 1 && v <= max)) return toast(st.jenis === "iqra" ? "Isi muka surat Iqra' yang betul" : "Muka surat al-Quran mesti 1 hingga 604");
+    simpanBacaan(s, { jenis: st.jenis, jilid: st.jenis === "iqra" ? st.jilid : null, muka_surat: v, catatan: nota.value.trim() || null });
+  } }, "Simpan bacaan hari ini");
+  const sej = (s.bacaan || []).slice(0, 6);
+  return el("div", { class: "card" },
+    el("div", { class: "bacaan-now" }, el("span", { class: "lbl" }, "Bacaan terkini"), el("b", {}, posisi(last)),
+      last ? el("span", { class: "hint" }, "Direkod " + dmy(last.tarikh)) : el("span", { class: "hint" }, "Rekod muka surat pertama di bawah")),
+    el("div", { class: "meter gold" }, el("i", { style: "width:" + peratus.toFixed(1) + "%" })),
+    el("p", { class: "hint" }, last ? (last.jenis === "iqra" ? "Perjalanan Iqra' 1-6: " : "Perjalanan ke khatam: ") + Math.round(peratus) + "%" : ""),
+    el("div", { class: "bform" }, seg, st.jenis === "iqra" ? jil : null, el("label", { class: "field", for: "b-ms" }, el("span", { class: "lbl" }, "Muka surat"), el("span", { style: "display:flex;gap:8px;align-items:center" }, ms, juzInfo)), nota, simpan),
+    sej.length ? el("div", { class: "blog" }, el("span", { class: "lbl" }, "Rekod terdahulu"), sej.map((b, i) => {
+      const prev = sej[i + 1]; const beza = prev && prev.jenis === b.jenis && (b.jenis === "quran" || prev.jilid === b.jilid) ? b.muka_surat - prev.muka_surat : null;
+      return el("div", { class: "brow" }, el("span", { class: "bd" }, dmy(b.tarikh).slice(0, 5)), el("span", { style: "min-width:0;flex:1" }, posisi(b), b.catatan ? el("small", {}, " · " + b.catatan) : null),
+        beza ? el("span", { class: "pill " + (beza > 0 ? "ok" : "mid") }, (beza > 0 ? "+" : "") + beza + " ms") : null,
+        i === 0 ? confirmBtn("Padam", () => padamBacaan(s, b.id)) : null);
+    })) : null);
+}
+function kadHafazan(s) {
+  const set = new Set(s.quran.hafazan_surah || []);
+  const togol = nm => { set.has(nm) ? set.delete(nm) : set.add(nm); s.quran.hafazan_surah = [...set]; s.quran.hafazan = set.size; simpanQuran(s); render(); };
+  const chip = nm => el("button", { class: "schip" + (set.has(nm) ? " on" : ""), "aria-pressed": String(set.has(nm)), onclick: () => togol(nm) }, nm);
+  const ja = JUZ_AMMA.filter(n => set.has(n)).length;
+  return el("div", { class: "card" },
+    el("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline" }, el("strong", {}, "Hafazan"), el("span", {}, set.size + " surah dihafaz")),
+    el("div", { class: "field" }, el("span", { class: "lbl" }, "Juz Amma · " + ja + "/37"), el("div", { class: "meter gold" }, el("i", { style: "width:" + (ja / 37 * 100) + "%" }))),
+    el("div", { class: "chips" }, JUZ_AMMA.slice().reverse().map(chip)),
+    el("span", { class: "lbl" }, "Surah pilihan"), el("div", { class: "chips" }, SURAH_PILIHAN.map(chip)),
+    el("p", { class: "hint" }, "Tekan nama surah yang murid dah hafaz dengan lancar. Juz Amma disusun dari An-Nas (biasanya dihafaz dulu)."));
 }
 
 const views = {
@@ -413,14 +481,13 @@ const views = {
     const s = current();
     const rub = QRUB.map(([k, label]) => el("div", { class: "field" }, el("span", { class: "lbl" }, label + " (1-5)"),
       el("div", { class: "scale" }, [1, 2, 3, 4, 5].map(n => el("button", { class: s.quran[k] === n ? "on" : "", "aria-pressed": String(s.quran[k] === n), "aria-label": label + " " + n, onclick: () => { s.quran[k] = n; simpanQuran(s); render(); } }, String(n))))));
-    const tahap = el("select", { id: "tahap", onchange: e => { s.quran.tahap = e.target.value === "" ? null : +e.target.value; simpanQuran(s); } },
-      el("option", { value: "" }, "Belum dinilai"), TAHAP.map((t, i) => { const o = el("option", { value: i }, t); if (i === s.quran.tahap) o.selected = true; return o; }));
-    const haf = el("input", { type: "text", inputmode: "numeric", id: "hafazan", value: s.quran.hafazan ?? "", style: "width:90px", onchange: e => { const v = parseInt(e.target.value, 10); s.quran.hafazan = isNaN(v) ? null : Math.max(0, Math.min(114, v)); simpanQuran(s); render(); } });
+    const kad = [];
+    if (!state.bacaanReady) kad.push(el("div", { class: "card" }, el("strong", {}, "Kemajuan bacaan & hafazan"),
+      el("p", { class: "hint" }, "Bahagian ini aktif selepas ketua panitia jalankan SQL kemas kini #3 (bacaan_log) dalam Supabase.")));
+    else kad.push(kadBacaan(s), kadHafazan(s));
     return [secHead("book", "Bacaan al-Quran", "Tilawah, tahap bacaan dan hafazan · " + kelasLabel(kelasNow())), studentPicker(),
       el("div", { class: "card" }, el("strong", {}, "Penilaian tilawah"), el("div", { class: "grid2" }, rub), el("p", { class: "hint" }, "1 = sangat lemah, 3 = sederhana, 5 = sangat baik.")),
-      el("div", { class: "card" }, el("strong", {}, "Kemajuan bacaan"), el("div", { class: "grid2" },
-        el("div", { class: "field" }, el("span", { class: "lbl" }, "Tahap bacaan"), tahap),
-        el("div", { class: "field" }, el("span", { class: "lbl" }, "Surah hafazan dikuasai"), haf)))];
+      ...kad];
   },
   yasin() {
     if (!state.murid.length) return [kosong()];
@@ -469,7 +536,7 @@ const views = {
       el("div", { class: "card" },
         el("div", { style: "display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center" },
           el("div", { class: "phead" }, avatar(s.nama, true), el("div", { style: "min-width:0" }, el("div", { style: "font-family:var(--f-display);font-size:1.3rem;font-weight:700" }, s.nama), el("span", { class: "pill " + c }, t),
-            el("span", { class: "hint" }, " Tahap bacaan: " + (s.quran.tahap == null ? "-" : TAHAP[s.quran.tahap]) + " · Hafazan: " + (s.quran.hafazan ?? "-") + " surah"))),
+            el("span", { class: "hint" }, " " + posisi(s.bacaan?.[0]) + " · Hafazan: " + (s.quran.hafazan ?? 0) + " surah"))),
           el("div", { class: "score" }, sc.total == null ? "-" : sc.total.toFixed(1), el("small", {}, "markah keseluruhan"))),
         el("div", { class: "summary" },
           el("div", { class: "stat" }, el("span", { class: "lbl" }, "Amali solat"), el("b", {}, pct(sc.solat))),

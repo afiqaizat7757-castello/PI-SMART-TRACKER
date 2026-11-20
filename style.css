@@ -223,3 +223,18 @@ nav.tabs button[aria-selected=true]{background:var(--sec,var(--accent));border-c
   .toolbar select{flex:1}
   .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
+
+/* ===== bacaan & hafazan ===== */
+.bacaan-now{display:grid;gap:2px}
+.bacaan-now b{font-family:var(--f-display);font-size:1.4rem;color:var(--c-quran)}
+.meter.gold i{background:var(--c-quran)}
+.bform{display:flex;flex-wrap:wrap;gap:10px;align-items:end;padding-top:8px;border-top:1px dashed var(--line)}
+.bform .seg button[aria-pressed=true]{background:var(--c-quran)}
+.blog{display:grid;gap:6px}
+.brow{display:flex;gap:10px;align-items:center;font-size:.88rem;padding:6px 0;border-bottom:1px solid var(--line)}
+.brow .bd{font-variant-numeric:tabular-nums;color:var(--muted);width:44px;flex:none}
+.brow small{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.schip{font:inherit;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:5px 11px;cursor:pointer}
+.schip.on{background:var(--c-quran);border-color:var(--c-quran);color:var(--on-accent);font-weight:600}
+@media (prefers-reduced-motion:no-preference){.schip.on{animation:pop .25s ease-out}}
