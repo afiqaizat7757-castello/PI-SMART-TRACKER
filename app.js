@@ -12,7 +12,7 @@ const SUSUNAN_KELAS = ["UM","UPM","UKM","UTM","UIA","USM"];
 // Wajaran markah keseluruhan
 const W = { solat: 0.3, quran: 0.3, tp: 0.4 };
 
-const state = { me: null, kelasList: [], allKelas: [], kelas: null, tab: "ranking", sid: null, murid: [], yasin: {}, ydate: null, adminGuru: null, guruList: [], solatMode: "satu", sejarah: {} };
+const state = { me: null, kelasList: [], allKelas: [], kelas: null, tab: "utama", sid: null, murid: [], yasin: {}, ydate: null, adminGuru: null, guruList: [], solatMode: "satu", sejarah: {} };
 
 // ---------- util ----------
 const $ = s => document.querySelector(s);
@@ -91,9 +91,11 @@ function renderTop() {
   const groups = {};
   for (const k of state.kelasList) (groups[k.tingkatan] ||= []).push(k);
   for (const [t, ks2] of Object.entries(groups)) ks.append(el("optgroup", { label: "Tingkatan " + t }, ks2.map(k => { const o = el("option", { value: k.id }, kelasLabel(k)); if (k.id === state.kelas) o.selected = true; return o; })));
-  $("#topright").replaceChildren(el("div", { class: "field" },
-    el("div", { class: "who" }, el("span", {}, state.me.nama + (isKetua() ? " · Ketua panitia" : "")), el("button", { class: "linkbtn", onclick: logout }, "Log keluar")),
-    state.kelasList.length ? ks : null));
+  const iconBtn = (n, label, fn) => el("button", { class: "iconbtn", "aria-label": label, title: label, onclick: fn }, ikon(n, 20));
+  $("#topright").replaceChildren(el("div", { class: "toolbar" },
+    state.kelasList.length ? ks : null,
+    iconBtn("gear", "Urus murid, guru & export", () => setTab("urus")),
+    iconBtn("logout", "Log keluar", logout)));
 }
 
 // ---------- data ----------
@@ -227,6 +229,10 @@ const IKON = {
   book: "M4 19.5V5a2 2 0 012-2h14v15H6a2 2 0 00-2 2 2 2 0 002 2h14", moon: "M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z",
   star: "M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4L2.8 9.5l6.4-.8z",
   trophy: "M7 4h10v4a5 5 0 01-10 0zM7 6H4v1a4 4 0 004 4M17 6h3v1a4 4 0 01-4 4M12 13v4M8 21h8M10 17h4",
+  home: "M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z", user: "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0",
+  sejadah: "M6 3h12v18H6zM9 6.5h6M9 17.5h6M12 9v6M10 11l2-2 2 2",
+  gear: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.8 1.2V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 003 14H3a2 2 0 110-4h.1a1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0010 3.1V3a2 2 0 114 0v.1a1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0021 10h.1a2 2 0 110 4H21a1.7 1.7 0 00-1.6 1z",
+  plus: "M12 5v14M5 12h14", logout: "M15 4h4a1 1 0 011 1v14a1 1 0 01-1 1h-4M10 17l5-5-5-5M15 12H3",
   khatam: "M12 3l2 4 4 .5-3 3 .8 4.5-3.8-2-3.8 2 .8-4.5-3-3 4-.5zM6 21h12",
 };
 function ikon(n, size) {
@@ -277,7 +283,26 @@ function studentPicker() {
     el("button", { class: "linkbtn", onclick: () => go(-1) }, "‹ Sebelum"),
     el("button", { class: "linkbtn", onclick: () => go(1) }, "Seterusnya ›"));
 }
-const kosong = () => el("div", { class: "empty" }, "Belum ada murid dalam kelas ini. Tambah murid di tab Urus.");
+const SEC = { utama: "--c-solat", solat: "--c-solat", quran: "--c-quran", yasin: "--c-yasin", ranking: "--c-rank", profil: "--c-rank", urus: "--c-solat" };
+const kelasNow = () => state.allKelas.find(x => x.id === state.kelas);
+function secHead(ik, tajuk, sub) {
+  return el("div", { class: "sechead" }, el("span", { class: "secico" }, ikon(ik, 22)), el("div", { style: "min-width:0" }, el("h2", {}, tajuk), sub ? el("p", { class: "hint" }, sub) : null));
+}
+function kosong() {
+  return el("div", { class: "emptyc" }, el("span", { class: "secico big" }, ikon("user", 30)),
+    el("strong", {}, "Belum ada murid dalam kelas " + (kelasNow() ? kelasLabel(kelasNow()) : "ini")),
+    el("p", { class: "hint" }, "Paste senarai nama dari fail kelas, satu nama satu baris. Siap dalam seminit."),
+    el("button", { class: "btn", onclick: () => setTab("urus") }, ikon("plus", 18), " Tambah murid"));
+}
+const AYAT = [
+  ["Sesungguhnya solat itu mencegah daripada perbuatan keji dan mungkar.", "Surah al-Ankabut, 29:45"],
+  ["Sebaik-baik kamu ialah orang yang mempelajari al-Quran dan mengajarkannya.", "Hadis riwayat al-Bukhari"],
+  ["Bacalah al-Quran, kerana ia akan datang pada hari kiamat sebagai pemberi syafaat kepada pembacanya.", "Hadis riwayat Muslim"],
+  ["Solatlah kamu sebagaimana kamu melihat aku bersolat.", "Hadis riwayat al-Bukhari"],
+  ["Dan bacalah al-Quran itu dengan tartil.", "Surah al-Muzzammil, 73:4"],
+  ["Suruhlah anak-anak kamu bersolat ketika mereka berumur tujuh tahun.", "Hadis riwayat Abu Daud"],
+  ["Amalan yang paling disukai Allah ialah yang berterusan walaupun sedikit.", "Hadis riwayat al-Bukhari dan Muslim"],
+];
 
 // Mod laju: semua murid dalam satu jadual. Tak render semula seluruh skrin supaya scroll tak lari.
 function solatKelas() {
@@ -302,11 +327,49 @@ function solatKelas() {
 }
 
 const views = {
+  utama() {
+    const now = new Date(), jumaat = now.getDay() === 5;
+    const masihi = new Intl.DateTimeFormat("ms-MY", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
+    let hijri = ""; try { hijri = new Intl.DateTimeFormat("ms-MY-u-ca-islamic-umalqura", { day: "numeric", month: "long", year: "numeric" }).format(now); } catch (e) {}
+    const doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5); const [ay, sumber] = AYAT[doy % AYAT.length];
+    const k = kelasNow(); const M = state.murid; const n = M.length;
+    const nama = (state.me.nama || "").split(/\s+/)[0];
+    const sapa = el("div", { class: "greet" }, el("p", { class: "lbl" }, masihi + (hijri ? " · " + hijri : "")), el("h2", {}, "Assalamualaikum, Cikgu " + nama),
+      el("p", { class: "hint" }, k ? (n ? "Kelas " + kelasLabel(k) + " · " + n + " murid" : "Kelas " + kelasLabel(k) + " belum ada murid") : ""));
+    const ayat = el("figure", { class: "ayat" }, el("blockquote", {}, "\u201C" + ay + "\u201D"), el("figcaption", {}, sumber + " (maksudnya)"));
+    if (!n) return [sapa, kosong(), ayat];
+    const sc = M.map(scores);
+    const lulus = M.filter(s => s.solat.every(Boolean)).length, solatDinilai = M.filter(s => s.solat.some(Boolean)).length;
+    const qv = sc.map(x => x.quran).filter(v => v != null), qAvg = qv.length ? qv.reduce((p, c) => p + c, 0) / qv.length : null;
+    const yv = M.map(s => yasinStat(s).pct).filter(v => v != null), yAvg = yv.length ? yv.reduce((p, c) => p + c, 0) / yv.length : null;
+    const n1 = nombor1Id(), top = M.find(s => s.id === n1);
+    const tile = (tab, sec, ik, tajuk, nilai, ket) => el("button", { class: "tile", style: "--sec:var(" + sec + ")", onclick: () => setTab(tab) },
+      el("span", { class: "secico" }, ikon(ik, 22)), el("span", { class: "tt" }, tajuk), el("b", {}, nilai), el("span", { class: "hint" }, ket));
+    const jum = el("div", { class: "jumaat" + (jumaat ? " today" : ""), style: "--sec:var(--c-yasin)" },
+      el("span", { class: "secico" }, ikon("moon", 22)),
+      el("div", { style: "min-width:0;flex:1" }, el("strong", {}, jumaat ? "Hari ini Jumaat" : "Yasin Jumaat seterusnya"),
+        el("p", { class: "hint" }, jumaat ? (state.yasin[iso(now)] ? "Kehadiran " + kelasLabel(k) + " dah direkod. Tekan untuk semak." : "Rekod kehadiran bacaan Yasin " + kelasLabel(k) + ".") : dmy(nextFriday()))),
+      el("button", { class: "btn", onclick: () => setTab("yasin") }, jumaat ? "Rekod" : "Buka"));
+    return [sapa, jum,
+      el("div", { class: "tiles" },
+        tile("solat", "--c-solat", "sejadah", "Amali solat", lulus + "/" + n, solatDinilai ? "lulus 13 rukun" : "belum dinilai"),
+        tile("quran", "--c-quran", "book", "Al-Quran", qAvg == null ? "Mula" : Math.round(qAvg) + "%", qAvg == null ? "nilai tilawah" : "purata tilawah"),
+        tile("yasin", "--c-yasin", "moon", "Yasin Jumaat", yAvg == null ? "Mula" : Math.round(yAvg) + "%", yAvg == null ? "belum direkod" : "purata kehadiran"),
+        tile("ranking", "--c-rank", "trophy", "Ranking", top ? pendek(top.nama) : "-", top ? "nombor 1 kelas" : "belum ada markah")),
+      ayat];
+  },
   ranking() {
     if (!state.murid.length) return [kosong()];
+    if (!state.murid.some(s => scores(s).total != null)) return [secHead("trophy", "Ranking " + kelasLabel(kelasNow()), "Belum ada markah untuk disusun"),
+      el("div", { class: "emptyc" }, el("span", { class: "secico big" }, ikon("trophy", 30)), el("strong", {}, "Ranking akan muncul selepas penilaian pertama"),
+        el("p", { class: "hint" }, "Mula dengan amali solat atau bacaan al-Quran. Podium dan lencana akan keluar sendiri."),
+        el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;justify-content:center" },
+          el("button", { class: "btn", onclick: () => { state.solatMode = "kelas"; setTab("solat"); } }, "Mula amali solat"),
+          el("button", { class: "linkbtn", onclick: () => setTab("quran") }, "Nilai bacaan"))),
+      el("div", { class: "list" }, state.murid.map(s => el("button", { class: "li lib", onclick: () => { state.sid = s.id; setTab("profil"); } }, avatar(s.nama), el("span", {}, s.nama))))];
     const list = state.murid.map(s => ({ s, sc: scores(s), y: yasinStat(s) })).sort((a, b) => (b.sc.total ?? -1) - (a.sc.total ?? -1));
     const dinilai = list.filter(x => x.sc.total != null);
-    return [
+    return [secHead("trophy", "Ranking " + kelasLabel(kelasNow()), dinilai.length + " daripada " + list.length + " murid dah ada markah"),
       el("div", { class: "summary" },
         el("div", { class: "stat" }, el("span", { class: "lbl" }, "Purata kelas"), el("b", {}, dinilai.length ? (dinilai.reduce((a, x) => a + x.sc.total, 0) / dinilai.length).toFixed(1) + "%" : "-")),
         el("div", { class: "stat" }, el("span", { class: "lbl" }, "Lulus 13 rukun solat"), el("b", {}, list.filter(x => x.sc.solat === 100).length + " / " + list.length)),
@@ -314,7 +377,7 @@ const views = {
       dinilai.length >= 3 ? el("div", { class: "podium" }, [1, 0, 2].map(i => { const x = list[i];
         return el("button", { class: "pod p" + (i + 1), onclick: () => { state.sid = x.s.id; setTab("profil"); } },
           el("span", { class: "medal" }, String(i + 1)), avatar(x.s.nama, i === 0), el("span", { class: "pn" }, pendek(x.s.nama)), el("span", { class: "ps" }, x.sc.total.toFixed(1))); })) : null,
-      el("p", { class: "hint" }, "Markah keseluruhan = Amali solat 30% + Al-Quran 30% + purata TP 40%. Bahagian yang belum dinilai tidak dikira. Tekan nama untuk buka profil."),
+      el("details", { class: "legend" }, el("summary", {}, "Cara markah dikira"), el("p", { class: "hint" }, "Markah keseluruhan = Amali solat 30% + Al-Quran 30% + purata TP 40%. Bahagian yang belum dinilai tidak dikira. Tekan nama untuk buka profil.")),
       el("div", { class: "rank" }, list.map((x, i) => {
         const [c, t] = band(x.sc.total);
         return el("button", { class: "row", onclick: () => { state.sid = x.s.id; setTab("profil"); } },
@@ -322,7 +385,7 @@ const views = {
           avatar(x.s.nama),
           el("span", { style: "min-width:0" }, el("div", { class: "name" }, x.s.nama),
             el("div", { class: "bars" }, el("span", { class: "pill " + c }, t),
-              el("span", {}, "Solat " + pct(x.sc.solat)), el("span", {}, "Quran " + pct(x.sc.quran)), el("span", {}, "TP " + pct(x.sc.tp)),
+              x.sc.total == null ? null : [el("span", {}, "Solat " + pct(x.sc.solat)), el("span", {}, "Quran " + pct(x.sc.quran)), el("span", {}, "TP " + pct(x.sc.tp))],
               x.y.pct == null ? null : el("span", {}, "Yasin " + pct(x.y.pct)),
               (() => { const L = lencana(x.s, { nombor1: i === 0 && x.sc.total != null }).filter(b => b.dapat); return L.length ? el("span", { class: "minibadge", title: L.map(b => b.nama).join(", ") }, L.map(b => ikon(b.ikon, 14))) : null; })())),
           el("span", { class: "score" }, x.sc.total == null ? "-" : x.sc.total.toFixed(1), el("small", {}, "/ 100")));
@@ -333,9 +396,10 @@ const views = {
     if (!state.murid.length) return [kosong()];
     const mod = el("div", { class: "seg", role: "group", "aria-label": "Mod paparan" },
       [["satu", "Seorang murid"], ["kelas", "Satu kelas (laju)"]].map(([k, l]) => el("button", { "aria-pressed": String(state.solatMode === k), onclick: () => { state.solatMode = k; render(); } }, l)));
-    if (state.solatMode === "kelas") return [mod, solatKelas()];
+    const hd = secHead("sejadah", "Amali solat", "13 rukun solat · " + kelasLabel(kelasNow()));
+    if (state.solatMode === "kelas") return [hd, mod, solatKelas()];
     const s = current(); const done = s.solat.filter(Boolean).length;
-    return [mod, studentPicker(), el("div", { class: "card" },
+    return [hd, mod, studentPicker(), el("div", { class: "card" },
       el("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, el("strong", {}, "13 rukun solat"), el("span", {}, done + " / 13 dikuasai")),
       el("div", { class: "meter" }, el("i", { style: "width:" + (done / 13 * 100) + "%" })),
       el("div", { class: "checks" }, RUKUN.map((r, i) => {
@@ -352,7 +416,7 @@ const views = {
     const tahap = el("select", { id: "tahap", onchange: e => { s.quran.tahap = e.target.value === "" ? null : +e.target.value; simpanQuran(s); } },
       el("option", { value: "" }, "Belum dinilai"), TAHAP.map((t, i) => { const o = el("option", { value: i }, t); if (i === s.quran.tahap) o.selected = true; return o; }));
     const haf = el("input", { type: "text", inputmode: "numeric", id: "hafazan", value: s.quran.hafazan ?? "", style: "width:90px", onchange: e => { const v = parseInt(e.target.value, 10); s.quran.hafazan = isNaN(v) ? null : Math.max(0, Math.min(114, v)); simpanQuran(s); render(); } });
-    return [studentPicker(),
+    return [secHead("book", "Bacaan al-Quran", "Tilawah, tahap bacaan dan hafazan · " + kelasLabel(kelasNow())), studentPicker(),
       el("div", { class: "card" }, el("strong", {}, "Penilaian tilawah"), el("div", { class: "grid2" }, rub), el("p", { class: "hint" }, "1 = sangat lemah, 3 = sederhana, 5 = sangat baik.")),
       el("div", { class: "card" }, el("strong", {}, "Kemajuan bacaan"), el("div", { class: "grid2" },
         el("div", { class: "field" }, el("span", { class: "lbl" }, "Tahap bacaan"), tahap),
@@ -367,7 +431,7 @@ const views = {
     const sesi = Object.keys(state.yasin).length;
     const stats = list.map(s => ({ s, y: yasinStat(s) })).sort((a, b) => (a.y.pct ?? 101) - (b.y.pct ?? 101));
     const purata = sesi ? avg(stats.map(x => x.y.pct)) : null;
-    return [
+    return [secHead("moon", "Yasin Jumaat", "Kehadiran bacaan Yasin · " + kelasLabel(kelasNow())),
       el("div", { class: "picker" }, el("span", { class: "lbl" }, "Tarikh"),
         el("select", { id: "ydate", "aria-label": "Pilih Jumaat", onchange: e => { state.ydate = e.target.value; render(); } },
           opts.map(o => { const op = el("option", { value: o }, "Jumaat " + dmy(o) + (state.yasin[o] ? "" : " (belum direkod)")); if (o === date) op.selected = true; return op; }))),
@@ -483,8 +547,9 @@ async function loadGuru() {
   render();
 }
 
-const TABS = [["ranking", "Ranking"], ["solat", "Amali solat"], ["quran", "Al-Quran"], ["yasin", "Yasin Jumaat"], ["profil", "Profil murid"], ["urus", "Urus"]];
-function setTab(t) { state.tab = t; render(); }
+const TABS = [["utama", "Utama", "home"], ["solat", "Solat", "sejadah"], ["quran", "Al-Quran", "book"], ["yasin", "Yasin", "moon"], ["ranking", "Ranking", "trophy"], ["profil", "Profil", "user"], ["urus", "Urus", "gear"]];
+const BAWAH = ["utama", "solat", "quran", "yasin", "ranking"];
+function setTab(t) { state.tab = t; render(); window.scrollTo({ top: 0 }); }
 function grafSejarah(s) {
   const h = state.sejarah[s.id];
   if (h === undefined) { muatSejarah(s.id); return el("p", { class: "hint" }, "Memuatkan graf..."); }
@@ -520,9 +585,11 @@ function grafSejarah(s) {
 }
 
 function render() {
-  const nav = el("nav", { class: "tabs", role: "tablist" }, TABS.map(([k, l]) => el("button", { role: "tab", "aria-selected": String(state.tab === k), onclick: () => setTab(k) }, l)));
-  const view = el("section", { class: "panel" }, views[state.tab]());
-  $("#app").replaceChildren(nav, view);
+  const btn = ([k, l, ik]) => el("button", { role: "tab", "aria-selected": String(state.tab === k), style: "--sec:var(" + SEC[k] + ")", onclick: () => setTab(k) }, ikon(ik, 20), el("span", {}, l));
+  const nav = el("nav", { class: "tabs", role: "tablist", "aria-label": "Menu" }, TABS.map(btn));
+  const bawah = el("nav", { class: "bottomnav", "aria-label": "Menu utama" }, TABS.filter(t => BAWAH.includes(t[0])).map(btn));
+  const view = el("section", { class: "panel", style: "--sec:var(" + SEC[state.tab] + ")" }, views[state.tab]());
+  $("#app").replaceChildren(nav, view, bawah);
 }
 
 sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" && !state.me) boot(); });
