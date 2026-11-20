@@ -34,6 +34,15 @@ const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0
 const dmy = s => s.split("-").reverse().join("/");
 function lastFridays(n) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() - 5 + 7) % 7)); const out = []; for (let i = 0; i < n; i++) { const x = new Date(d); x.setDate(d.getDate() - 7 * i); out.push(iso(x)); } return out; }
 function nextFriday() { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7)); return iso(d); }
+const KECIL = new Set(["bin","binti","bt","b.","a/l","a/p","al","bte"]);
+const titleCase = s => s.toLowerCase().split(/\s+/).map((w, i) => i && KECIL.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+function avatar(nama, lg) {
+  const w = nama.split(/\s+/).filter(x => !KECIL.has(x.toLowerCase()) && !/^(muhammad|mohd|muhd|mohamad|mohammad|nur|nor|nurul|siti|ahmad)$/i.test(x));
+  const ini = ((w[0] || nama)[0] + (w[1] ? w[1][0] : "")).toUpperCase();
+  let h = 0; for (const ch of nama) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return el("span", { class: "av" + (lg ? " lg" : ""), style: "background:hsl(" + h + " 45% 42%)", "aria-hidden": "true" }, ini);
+}
+const pendek = n => n.split(/\s+/).filter(x => !KECIL.has(x.toLowerCase())).slice(0, 2).join(" ");
 const kelasLabel = k => k.tingkatan + " " + k.nama;
 const stamp = () => ({ updated_by: state.me.id, updated_at: new Date().toISOString() });
 const isKetua = () => state.me?.peranan === "ketua_panitia";
@@ -109,7 +118,7 @@ async function pilihKelas(kid) {
   state.murid = m.map(x => {
     const s = by(S, x.id), q = by(Q, x.id) || {}, c = by(C, x.id);
     return {
-      id: x.id, nama: x.nama,
+      id: x.id, nama: titleCase(x.nama),
       solat: s?.rukun ? [...s.rukun] : Array(13).fill(false),
       quran: { tajwid: q.tajwid ?? null, makhraj: q.makhraj ?? null, kelancaran: q.kelancaran ?? null, fasohah: q.fasohah ?? null, tahap: q.tahap ?? null, hafazan: q.hafazan ?? null },
       tp: BIDANG.map(b => T.find(t => t.murid_id === x.id && t.bidang === b)?.tp ?? null),
@@ -183,11 +192,15 @@ const views = {
         el("div", { class: "stat" }, el("span", { class: "lbl" }, "Purata kelas"), el("b", {}, dinilai.length ? (dinilai.reduce((a, x) => a + x.sc.total, 0) / dinilai.length).toFixed(1) + "%" : "-")),
         el("div", { class: "stat" }, el("span", { class: "lbl" }, "Lulus 13 rukun solat"), el("b", {}, list.filter(x => x.sc.solat === 100).length + " / " + list.length)),
         el("div", { class: "stat" }, el("span", { class: "lbl" }, "Perlu bimbingan"), el("b", {}, String(dinilai.filter(x => x.sc.total < 50).length)))),
+      dinilai.length >= 3 ? el("div", { class: "podium" }, [1, 0, 2].map(i => { const x = list[i];
+        return el("button", { class: "pod p" + (i + 1), onclick: () => { state.sid = x.s.id; setTab("profil"); } },
+          el("span", { class: "medal" }, String(i + 1)), avatar(x.s.nama, i === 0), el("span", { class: "pn" }, pendek(x.s.nama)), el("span", { class: "ps" }, x.sc.total.toFixed(1))); })) : null,
       el("p", { class: "hint" }, "Markah keseluruhan = Amali solat 30% + Al-Quran 30% + purata TP 40%. Bahagian yang belum dinilai tidak dikira. Tekan nama untuk buka profil."),
       el("div", { class: "rank" }, list.map((x, i) => {
         const [c, t] = band(x.sc.total);
         return el("button", { class: "row", onclick: () => { state.sid = x.s.id; setTab("profil"); } },
           el("span", { class: "pos" + (i < 3 && x.sc.total != null ? " top" : "") }, String(i + 1)),
+          avatar(x.s.nama),
           el("span", { style: "min-width:0" }, el("div", { class: "name" }, x.s.nama),
             el("div", { class: "bars" }, el("span", { class: "pill " + c }, t),
               el("span", {}, "Solat " + pct(x.sc.solat)), el("span", {}, "Quran " + pct(x.sc.quran)), el("span", {}, "TP " + pct(x.sc.tp)),
@@ -268,8 +281,8 @@ const views = {
     return [studentPicker(),
       el("div", { class: "card" },
         el("div", { style: "display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center" },
-          el("div", {}, el("div", { style: "font-family:var(--f-display);font-size:1.3rem;font-weight:700" }, s.nama), el("span", { class: "pill " + c }, t),
-            el("span", { class: "hint" }, " Tahap bacaan: " + (s.quran.tahap == null ? "-" : TAHAP[s.quran.tahap]) + " · Hafazan: " + (s.quran.hafazan ?? "-") + " surah")),
+          el("div", { class: "phead" }, avatar(s.nama, true), el("div", { style: "min-width:0" }, el("div", { style: "font-family:var(--f-display);font-size:1.3rem;font-weight:700" }, s.nama), el("span", { class: "pill " + c }, t),
+            el("span", { class: "hint" }, " Tahap bacaan: " + (s.quran.tahap == null ? "-" : TAHAP[s.quran.tahap]) + " · Hafazan: " + (s.quran.hafazan ?? "-") + " surah"))),
           el("div", { class: "score" }, sc.total == null ? "-" : sc.total.toFixed(1), el("small", {}, "markah keseluruhan"))),
         el("div", { class: "summary" },
           el("div", { class: "stat" }, el("span", { class: "lbl" }, "Amali solat"), el("b", {}, pct(sc.solat))),
