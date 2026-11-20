@@ -12,7 +12,7 @@ const SUSUNAN_KELAS = ["UM","UPM","UKM","UTM","UIA","USM"];
 // Wajaran markah keseluruhan
 const W = { solat: 0.3, quran: 0.3, tp: 0.4 };
 
-const state = { me: null, kelasList: [], allKelas: [], kelas: null, tab: "ranking", sid: null, murid: [], yasin: {}, ydate: null, adminGuru: null, guruList: [] };
+const state = { me: null, kelasList: [], allKelas: [], kelas: null, tab: "ranking", sid: null, murid: [], yasin: {}, ydate: null, adminGuru: null, guruList: [], solatMode: "satu", sejarah: {} };
 
 // ---------- util ----------
 const $ = s => document.querySelector(s);
@@ -149,9 +149,53 @@ const current = () => state.murid.find(s => s.id === state.sid) || state.murid[0
 const pct = v => v == null ? "-" : Math.round(v) + "%";
 
 // ---------- simpan ----------
-async function simpanSolat(s) { const { error } = await sb.from("penilaian_solat").upsert({ murid_id: s.id, rukun: s.solat, ...stamp() }); error ? gagal(error) : toast("Disimpan"); }
-async function simpanQuran(s) { const { error } = await sb.from("penilaian_quran").upsert({ murid_id: s.id, ...s.quran, ...stamp() }); error ? gagal(error) : toast("Disimpan"); }
-async function simpanTP(s, i) { const { error } = await sb.from("penilaian_tp").upsert({ murid_id: s.id, bidang: BIDANG[i], tp: s.tp[i], ...stamp() }); error ? gagal(error) : toast("Disimpan"); }
+async function simpanSolat(s) { const { error } = await sb.from("penilaian_solat").upsert({ murid_id: s.id, rukun: s.solat, ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+async function simpanQuran(s) { const { error } = await sb.from("penilaian_quran").upsert({ murid_id: s.id, ...s.quran, ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+async function simpanTP(s, i) { const { error } = await sb.from("penilaian_tp").upsert({ murid_id: s.id, bidang: BIDANG[i], tp: s.tp[i], ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+// Gambaran markah sehari sekali (baris terakhir hari itu menang) untuk graf perkembangan
+const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+async function rekodSejarah(s) {
+  const sc = scores(s); if (sc.total == null) return;
+  const row = { murid_id: s.id, tarikh: iso(new Date()), solat: r1(sc.solat), quran: r1(sc.quran), tp: r1(sc.tp), total: r1(sc.total) };
+  const { error } = await sb.from("markah_sejarah").upsert(row);
+  if (error) { console.warn("markah_sejarah:", error.message); return; }
+  const h = state.sejarah[s.id]; if (h) { const i = h.findIndex(x => x.tarikh === row.tarikh); if (i >= 0) h[i] = row; else h.push(row); }
+}
+async function muatSejarah(id) {
+  state.sejarah[id] = "loading";
+  const { data, error } = await sb.from("markah_sejarah").select("tarikh,solat,quran,tp,total").eq("murid_id", id).order("tarikh");
+  state.sejarah[id] = error ? { ralat: error.message } : data;
+  if (state.tab === "profil" && current()?.id === id) render();
+}
+
+// ---------- ikon & lencana ----------
+const IKON = {
+  check: "M5 12.5l4.5 4.5L19 7.5", mic: "M12 3a3 3 0 013 3v5a3 3 0 01-6 0V6a3 3 0 013-3zM6 11a6 6 0 0012 0M12 17v4M9 21h6",
+  book: "M4 19.5V5a2 2 0 012-2h14v15H6a2 2 0 00-2 2 2 2 0 002 2h14", moon: "M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z",
+  star: "M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4L2.8 9.5l6.4-.8z",
+  trophy: "M7 4h10v4a5 5 0 01-10 0zM7 6H4v1a4 4 0 004 4M17 6h3v1a4 4 0 01-4 4M12 13v4M8 21h8M10 17h4",
+  khatam: "M12 3l2 4 4 .5-3 3 .8 4.5-3.8-2-3.8 2 .8-4.5-3-3 4-.5zM6 21h12",
+};
+function ikon(n, size) {
+  const NS = "http://www.w3.org/2000/svg", sv = document.createElementNS(NS, "svg");
+  sv.setAttribute("viewBox", "0 0 24 24"); sv.setAttribute("width", size || 18); sv.setAttribute("height", size || 18); sv.setAttribute("aria-hidden", "true");
+  const pa = document.createElementNS(NS, "path"); pa.setAttribute("d", IKON[n]); pa.setAttribute("fill", "none"); pa.setAttribute("stroke", "currentColor");
+  pa.setAttribute("stroke-width", "2"); pa.setAttribute("stroke-linecap", "round"); pa.setAttribute("stroke-linejoin", "round"); sv.append(pa); return sv;
+}
+function yasinStreak(s) { let n = 0; for (const d of Object.keys(state.yasin).sort().reverse()) { if (state.yasin[d].absent.includes(s.id)) break; n++; } return n; }
+function lencana(s, ctx = {}) {
+  const q = s.quran, st = yasinStreak(s);
+  return [
+    { k: "solat", ikon: "check", nama: "Solat Sempurna", syarat: "Kuasai semua 13 rukun solat", dapat: s.solat.every(Boolean) },
+    { k: "qari", ikon: "mic", nama: "Bacaan Mantap", syarat: "Tajwid, makhraj, kelancaran dan fasohah 4 ke atas", dapat: QRUB.every(([k]) => (q[k] ?? 0) >= 4) },
+    { k: "juzamma", ikon: "book", nama: "Hafiz Juz Amma", syarat: "Hafaz 37 surah (Juz Amma)", dapat: (q.hafazan ?? 0) >= 37 },
+    { k: "khatam", ikon: "khatam", nama: "Khatam al-Quran", syarat: "Tahap bacaan: Khatam", dapat: q.tahap === 5 },
+    { k: "yasin", ikon: "moon", nama: "Istiqamah Yasin", syarat: "Hadir Yasin 8 Jumaat berturut-turut (sekarang " + st + ")", dapat: st >= 8 },
+    { k: "tp", ikon: "star", nama: "TP Cemerlang", syarat: "TP5 ke atas dalam semua 7 bidang", dapat: s.tp.every(v => (v ?? 0) >= 5) },
+    { k: "bintang", ikon: "trophy", nama: "Bintang Kelas", syarat: "Nombor 1 dalam ranking kelas", dapat: !!ctx.nombor1 },
+  ];
+}
+function nombor1Id() { let best = null, bv = -1; for (const s of state.murid) { const t = scores(s).total; if (t != null && t > bv) { bv = t; best = s.id; } } return best; }
 async function simpanCatatan(s) { const { error } = await sb.from("catatan_guru").upsert({ murid_id: s.id, catatan: s.catatan.slice(0, 2000), ...stamp() }); error ? gagal(error) : toast("Disimpan"); }
 async function pastikanSesi(tarikh) {
   if (state.yasin[tarikh]) return state.yasin[tarikh];
@@ -182,6 +226,28 @@ function studentPicker() {
 }
 const kosong = () => el("div", { class: "empty" }, "Belum ada murid dalam kelas ini. Tambah murid di tab Urus.");
 
+// Mod laju: semua murid dalam satu jadual. Tak render semula seluruh skrin supaya scroll tak lari.
+function solatKelas() {
+  const kira = s => s.solat.filter(Boolean).length + "/13";
+  const rows = state.murid.map(s => {
+    const cnt = el("td", { class: "num cnt" }, kira(s));
+    const tr = el("tr", {}, el("th", { scope: "row", class: "sticky" }, el("span", { class: "nm" }, avatar(s.nama), el("span", {}, pendek(s.nama)))));
+    const boxes = RUKUN.map((r, i) => {
+      const inp = el("input", { type: "checkbox", "aria-label": s.nama + ": " + r, onchange: e => { s.solat[i] = e.target.checked; cnt.textContent = kira(s); tr.classList.toggle("full", s.solat.every(Boolean)); simpanSolat(s); } });
+      inp.checked = s.solat[i]; tr.append(el("td", { class: "cb" }, inp)); return inp;
+    });
+    tr.append(cnt, el("td", {}, el("button", { class: "linkbtn sm", onclick: () => { const all = !s.solat.every(Boolean); s.solat = s.solat.map(() => all); boxes.forEach(b => b.checked = all); cnt.textContent = kira(s); tr.classList.toggle("full", all); simpanSolat(s); } }, "Semua")));
+    if (s.solat.every(Boolean)) tr.classList.add("full");
+    return tr;
+  });
+  return el("div", { class: "card" },
+    el("p", { class: "hint" }, "Tanda terus rukun yang murid lakukan dengan betul. Setiap tanda disimpan serta-merta. Nombor lajur ikut senarai 13 rukun di bawah jadual."),
+    el("div", { class: "tblwrap solatgrid" }, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", { class: "sticky" }, "Murid"), RUKUN.map((r, i) => el("th", { class: "cb", title: r }, String(i + 1))), el("th", { class: "num" }, "Jumlah"), el("th", {}, ""))),
+      el("tbody", {}, rows))),
+    el("details", { class: "legend" }, el("summary", {}, "Senarai 13 rukun"), el("ol", {}, RUKUN.map(r => el("li", {}, r)))));
+}
+
 const views = {
   ranking() {
     if (!state.murid.length) return [kosong()];
@@ -204,15 +270,19 @@ const views = {
           el("span", { style: "min-width:0" }, el("div", { class: "name" }, x.s.nama),
             el("div", { class: "bars" }, el("span", { class: "pill " + c }, t),
               el("span", {}, "Solat " + pct(x.sc.solat)), el("span", {}, "Quran " + pct(x.sc.quran)), el("span", {}, "TP " + pct(x.sc.tp)),
-              x.y.pct == null ? null : el("span", {}, "Yasin " + pct(x.y.pct)))),
+              x.y.pct == null ? null : el("span", {}, "Yasin " + pct(x.y.pct)),
+              (() => { const L = lencana(x.s, { nombor1: i === 0 && x.sc.total != null }).filter(b => b.dapat); return L.length ? el("span", { class: "minibadge", title: L.map(b => b.nama).join(", ") }, L.map(b => ikon(b.ikon, 14))) : null; })())),
           el("span", { class: "score" }, x.sc.total == null ? "-" : x.sc.total.toFixed(1), el("small", {}, "/ 100")));
       })),
     ];
   },
   solat() {
     if (!state.murid.length) return [kosong()];
+    const mod = el("div", { class: "seg", role: "group", "aria-label": "Mod paparan" },
+      [["satu", "Seorang murid"], ["kelas", "Satu kelas (laju)"]].map(([k, l]) => el("button", { "aria-pressed": String(state.solatMode === k), onclick: () => { state.solatMode = k; render(); } }, l)));
+    if (state.solatMode === "kelas") return [mod, solatKelas()];
     const s = current(); const done = s.solat.filter(Boolean).length;
-    return [studentPicker(), el("div", { class: "card" },
+    return [mod, studentPicker(), el("div", { class: "card" },
       el("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" }, el("strong", {}, "13 rukun solat"), el("span", {}, done + " / 13 dikuasai")),
       el("div", { class: "meter" }, el("i", { style: "width:" + (done / 13 * 100) + "%" })),
       el("div", { class: "checks" }, RUKUN.map((r, i) => {
@@ -293,6 +363,10 @@ const views = {
         el("div", { class: "plus" }, el("h3", {}, "Kelebihan"), plus.length ? el("ul", {}, plus.map(p => el("li", {}, p))) : el("p", { class: "hint" }, "Belum ada yang menonjol.")),
         el("div", { class: "minus" }, el("h3", {}, "Kelemahan"), minus.length ? el("ul", {}, minus.map(p => el("li", {}, p))) : el("p", { class: "hint" }, "Tiada kelemahan ketara."))),
       el("div", { class: "card" }, el("strong", {}, "Tahap penguasaan (TP) ikut bidang"), el("div", { style: "display:grid;gap:8px" }, tps)),
+      el("div", { class: "card" }, el("strong", {}, "Lencana pencapaian"),
+        el("div", { class: "badges" }, lencana(s, { nombor1: nombor1Id() === s.id }).map(b =>
+          el("div", { class: "badge" + (b.dapat ? " on" : ""), title: b.syarat }, el("span", { class: "bi" }, ikon(b.ikon, 22)), el("b", {}, b.nama), el("small", {}, b.dapat ? "Dicapai" : b.syarat))))),
+      el("div", { class: "card" }, el("strong", {}, "Perkembangan markah keseluruhan"), grafSejarah(s)),
       el("div", { class: "card" }, el("strong", {}, "Catatan guru"), nota)];
   },
   urus() {
@@ -353,6 +427,40 @@ async function loadGuru() {
 
 const TABS = [["ranking", "Ranking"], ["solat", "Amali solat"], ["quran", "Al-Quran"], ["yasin", "Yasin Jumaat"], ["profil", "Profil murid"], ["urus", "Urus"]];
 function setTab(t) { state.tab = t; render(); }
+function grafSejarah(s) {
+  const h = state.sejarah[s.id];
+  if (h === undefined) { muatSejarah(s.id); return el("p", { class: "hint" }, "Memuatkan graf..."); }
+  if (h === "loading") return el("p", { class: "hint" }, "Memuatkan graf...");
+  if (h.ralat) return el("p", { class: "hint" }, "Graf belum aktif. Ketua panitia perlu jalankan SQL kemas kini (markah_sejarah).");
+  const d = h.filter(x => x.total != null);
+  if (d.length < 2) return el("p", { class: "hint" }, "Graf akan muncul bila murid ni dah dinilai pada sekurang-kurangnya 2 hari berbeza. Markah direkod automatik setiap kali kau simpan penilaian.");
+  const W = 640, H = 220, L = 36, R = 16, T = 14, B = 28;
+  const t = d.map(x => new Date(x.tarikh + "T12:00:00").getTime()); const t0 = t[0], t1 = t[t.length - 1] === t0 ? t0 + 1 : t[t.length - 1];
+  const X = v => L + (v - t0) / (t1 - t0) * (W - L - R), Y = v => T + (1 - v / 100) * (H - T - B);
+  const NS = "http://www.w3.org/2000/svg"; const mk = (n, at) => { const e = document.createElementNS(NS, n); for (const k in at) e.setAttribute(k, at[k]); return e; };
+  const sv = mk("svg", { viewBox: "0 0 " + W + " " + H, class: "graf", role: "img", "aria-label": "Graf markah keseluruhan " + s.nama });
+  for (const g of [0, 25, 50, 75, 100]) { sv.append(mk("line", { x1: L, x2: W - R, y1: Y(g), y2: Y(g), class: "grid" })); const tx = mk("text", { x: L - 6, y: Y(g) + 4, "text-anchor": "end", class: "ax" }); tx.textContent = g; sv.append(tx); }
+  const pts = d.map((x, i) => [X(t[i]), Y(x.total)]);
+  sv.append(mk("path", { d: "M" + pts.map(p => p.join(",")).join("L") + "L" + pts[pts.length - 1][0] + "," + Y(0) + "L" + pts[0][0] + "," + Y(0) + "Z", class: "area" }));
+  sv.append(mk("path", { d: "M" + pts.map(p => p.join(",")).join("L"), class: "line" }));
+  const lbl = (i, anchor) => { const tx = mk("text", { x: pts[i][0], y: H - 8, "text-anchor": anchor, class: "ax" }); tx.textContent = dmy(d[i].tarikh).slice(0, 5); sv.append(tx); };
+  lbl(0, "start"); lbl(d.length - 1, "end");
+  const tip = el("div", { class: "tip", hidden: true });
+  pts.forEach((p, i) => {
+    sv.append(mk("circle", { cx: p[0], cy: p[1], r: i === pts.length - 1 ? 5 : 3.5, class: "dot" + (i === pts.length - 1 ? " last" : "") }));
+    const hit = mk("circle", { cx: p[0], cy: p[1], r: 14, class: "hit", tabindex: 0 });
+    const show = () => { const x = d[i]; tip.replaceChildren(el("b", {}, dmy(x.tarikh) + ": " + x.total.toFixed(1)), el("span", {}, "Solat " + pct(x.solat) + " · Quran " + pct(x.quran) + " · TP " + pct(x.tp)));
+      tip.hidden = false; tip.style.left = (p[0] / W * 100) + "%"; tip.style.top = (p[1] / H * 100) + "%"; };
+    hit.addEventListener("pointerenter", show); hit.addEventListener("focus", show);
+    hit.addEventListener("pointerleave", () => tip.hidden = true); hit.addEventListener("blur", () => tip.hidden = true);
+    sv.append(hit);
+  });
+  const last = d[d.length - 1], first = d[0], beza = last.total - first.total;
+  const lt = mk("text", { x: pts[pts.length - 1][0] - 8, y: pts[pts.length - 1][1] - 10, "text-anchor": "end", class: "val" }); lt.textContent = last.total.toFixed(1); sv.append(lt);
+  return el("div", {}, el("p", { class: "hint" }, (beza >= 0 ? "Naik " : "Turun ") + Math.abs(beza).toFixed(1) + " markah sejak " + dmy(first.tarikh) + "."),
+    el("div", { class: "chartwrap" }, sv, tip));
+}
+
 function render() {
   const nav = el("nav", { class: "tabs", role: "tablist" }, TABS.map(([k, l]) => el("button", { role: "tab", "aria-selected": String(state.tab === k), onclick: () => setTab(k) }, l)));
   const view = el("section", { class: "panel" }, views[state.tab]());

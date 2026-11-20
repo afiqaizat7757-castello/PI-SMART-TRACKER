@@ -145,6 +145,23 @@ create policy yth_akses on public.yasin_tidak_hadir for all to authenticated
   with check (public.boleh_akses_murid(murid_id)
           and exists (select 1 from public.yasin_sesi s where s.id = sesi_id and public.boleh_akses_kelas(s.kelas_id)));
 
+-- ============ SEJARAH MARKAH (graf) ============
+create table if not exists public.markah_sejarah (
+  murid_id   uuid not null references public.murid(id) on delete cascade,
+  tarikh     date not null default current_date,
+  solat      numeric(5,1),
+  quran      numeric(5,1),
+  tp         numeric(5,1),
+  total      numeric(5,1),
+  primary key (murid_id, tarikh)
+);
+alter table public.markah_sejarah enable row level security;
+drop policy if exists sejarah_akses on public.markah_sejarah;
+create policy sejarah_akses on public.markah_sejarah for all to authenticated
+  using (public.boleh_akses_murid(murid_id)) with check (public.boleh_akses_murid(murid_id));
+grant select, insert, update, delete on public.markah_sejarah to authenticated;
+
+
 -- ============ GRANT (projek Supabase baharu mungkin tak beri akses jadual secara automatik) ============
 -- Selamat: RLS di atas masih menapis setiap baris.
 grant usage on schema public to authenticated;
