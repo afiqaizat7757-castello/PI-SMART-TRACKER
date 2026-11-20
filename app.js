@@ -97,11 +97,10 @@ function renderTop() {
 }
 
 // ---------- data ----------
-async function pilihKelas(kid) {
-  state.kelas = kid; state.sid = null;
-  $("#app").replaceChildren(el("p", { class: "hint" }, "Memuatkan kelas..."));
+// Ambil semua data satu kelas (tanpa ubah state) - dipakai oleh paparan dan export
+async function ambilKelas(kid) {
   const { data: m, error } = await sb.from("murid").select("id,nama").eq("kelas_id", kid).eq("aktif", true).order("nama");
-  if (error) return gagal(error);
+  if (error) throw error;
   const ids = m.map(x => x.id);
   let S = [], Q = [], T = [], C = [];
   if (ids.length) {
@@ -111,11 +110,11 @@ async function pilihKelas(kid) {
       sb.from("penilaian_tp").select("*").in("murid_id", ids),
       sb.from("catatan_guru").select("*").in("murid_id", ids),
     ]);
-    const bad = r.find(x => x.error); if (bad) return gagal(bad.error);
+    const bad = r.find(x => x.error); if (bad) throw bad.error;
     [S, Q, T, C] = r.map(x => x.data);
   }
   const by = (arr, id) => arr.find(x => x.murid_id === id);
-  state.murid = m.map(x => {
+  const murid = m.map(x => {
     const s = by(S, x.id), q = by(Q, x.id) || {}, c = by(C, x.id);
     return {
       id: x.id, nama: titleCase(x.nama),
@@ -126,10 +125,64 @@ async function pilihKelas(kid) {
     };
   });
   const { data: ses, error: ey } = await sb.from("yasin_sesi").select("id,tarikh,yasin_tidak_hadir(murid_id)").eq("kelas_id", kid);
-  if (ey) return gagal(ey);
-  state.yasin = {};
-  for (const s of ses) state.yasin[s.tarikh] = { id: s.id, absent: s.yasin_tidak_hadir.map(a => a.murid_id) };
+  if (ey) throw ey;
+  const yasin = {};
+  for (const s of ses) yasin[s.tarikh] = { id: s.id, absent: s.yasin_tidak_hadir.map(a => a.murid_id) };
+  return { murid, yasin };
+}
+async function pilihKelas(kid) {
+  state.kelas = kid; state.sid = null;
+  $("#app").replaceChildren(el("p", { class: "hint" }, "Memuatkan kelas..."));
+  try { const d = await ambilKelas(kid); state.murid = d.murid; state.yasin = d.yasin; }
+  catch (e) { return gagal(e); }
   renderTop(); render();
+}
+
+// ---------- export CSV (buka terus dalam Excel) ----------
+function selCSV(v) {
+  let s = v == null ? "" : String(v);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;           // elak formula injection bila dibuka dalam Excel
+  return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function barisExport(k, d) {
+  const simpan = { murid: state.murid, yasin: state.yasin };
+  state.murid = d.murid; state.yasin = d.yasin;   // lencana & yasinStat baca dari state
+  try {
+    const n1 = nombor1Id();
+    return d.murid.map(s => {
+      const sc = scores(s), y = yasinStat(s);
+      return [k.tingkatan, k.nama, s.nama, s.solat.filter(Boolean).length, r1(sc.solat),
+        s.quran.tajwid, s.quran.makhraj, s.quran.kelancaran, s.quran.fasohah, s.quran.tahap == null ? "" : TAHAP[s.quran.tahap], s.quran.hafazan, r1(sc.quran),
+        ...s.tp.map(v => v == null ? "" : "TP" + v), r1(sc.tp), y.sesi ? y.hadir + "/" + y.sesi : "", r1(y.pct), r1(sc.total),
+        lencana(s, { nombor1: n1 === s.id }).filter(b => b.dapat).map(b => b.nama).join("; "), s.catatan];
+    });
+  } finally { state.murid = simpan.murid; state.yasin = simpan.yasin; }
+}
+const KEPALA = ["Tingkatan", "Kelas", "Nama murid", "Rukun solat dikuasai (/13)", "Amali solat %", "Tajwid", "Makhraj", "Kelancaran", "Fasohah", "Tahap bacaan", "Surah hafazan", "Al-Quran %",
+  ...BIDANG.map(b => "TP " + b), "Purata TP %", "Hadir Yasin", "Yasin %", "Markah keseluruhan", "Lencana", "Catatan guru"];
+function muatTurun(nama, rows) {
+  const csv = "\uFEFF" + [KEPALA, ...rows].map(r => r.map(selCSV).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = el("a", { href: url, download: nama }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+async function exportKelas(semua, btn) {
+  const asal = btn.textContent; btn.disabled = true;
+  try {
+    const senarai = semua ? state.kelasList : state.kelasList.filter(k => k.id === state.kelas);
+    const rows = [];
+    for (const [i, k] of senarai.entries()) {
+      btn.textContent = semua ? "Mengumpul " + (i + 1) + "/" + senarai.length + "..." : "Menyediakan...";
+      const d = k.id === state.kelas ? { murid: state.murid, yasin: state.yasin } : await ambilKelas(k.id);
+      rows.push(...barisExport(k, d));
+    }
+    if (!rows.length) return toast("Tiada murid untuk diexport");
+    const hari = iso(new Date());
+    const k0 = senarai[0];
+    muatTurun(semua ? "Rekod-PI-semua-kelas-" + hari + ".csv" : "Rekod-PI-" + k0.tingkatan + "-" + k0.nama + "-" + hari + ".csv", rows);
+    toast(rows.length + " murid diexport");
+  } catch (e) { gagal(e); }
+  finally { btn.disabled = false; btn.textContent = asal; }
 }
 
 const avg = a => { const v = a.filter(x => x != null); return v.length ? v.reduce((p, c) => p + c, 0) / v.length : null; };
@@ -371,6 +424,11 @@ const views = {
   },
   urus() {
     const out = [];
+    const b1 = el("button", { class: "btn", onclick: e => exportKelas(false, e.currentTarget) }, "Export kelas ini");
+    const b2 = el("button", { class: "linkbtn", onclick: e => exportKelas(true, e.currentTarget) }, "Export semua kelas");
+    out.push(el("div", { class: "card" }, el("strong", {}, "Export & backup"),
+      el("p", { class: "hint" }, "Muat turun fail CSV yang boleh dibuka terus dalam Excel atau Google Sheets. Sesuai untuk backup, laporan PBD dan mesyuarat panitia. Simpan fail ni di tempat selamat kerana ia mengandungi data murid."),
+      el("div", { style: "display:flex;gap:8px;flex-wrap:wrap" }, state.kelas ? b1 : null, b2)));
     if (state.kelas) {
       const k = state.allKelas.find(x => x.id === state.kelas);
       const ta = el("textarea", { id: "murid-baru", placeholder: "Satu nama setiap baris. Boleh paste terus dari senarai kelas." });

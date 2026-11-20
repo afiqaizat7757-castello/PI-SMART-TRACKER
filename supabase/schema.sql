@@ -168,6 +168,12 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant execute on all functions in schema public to authenticated;
 
+-- ============ PING (elak pause plan percuma) ============
+create or replace function public.ping() returns text
+language sql stable as $$ select 'ok ' || now()::text $$;
+revoke all on function public.ping() from public;
+grant execute on function public.ping() to anon, authenticated;
+
 -- ============ DATA AWAL ============
 insert into public.kelas (tingkatan, nama)
 select t, n from generate_series(1,5) t,
