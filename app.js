@@ -32,7 +32,38 @@ const el = (tag, attrs = {}, ...kids) => {
   return e; // teks sentiasa masuk sebagai text node, bukan innerHTML (elak XSS)
 };
 let tTimer;
-function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tTimer); tTimer = setTimeout(() => t.hidden = true, 1800); }
+function toast(m, ok) {
+  const t = $("#toast"); t.textContent = ""; t.className = "toast" + (ok ? " ok" : "");
+  if (ok) t.append(el("span", { class: "tk" }, ikon("check", 14)));
+  t.append(document.createTextNode(m)); t.hidden = false;
+  void t.offsetWidth; t.classList.add("in");   // mulakan semula animasi masuk
+  clearTimeout(tTimer); tTimer = setTimeout(() => t.hidden = true, ok === "lama" ? 3200 : 1800);
+}
+// ---------- raikan lencana baru ----------
+const LENCANA_SIMPAN = new Set(["solat", "qari", "juzamma", "khatam", "tp"]);  // yang berubah bila guru simpan penilaian
+const lencanaAda = s => new Set(lencana(s).filter(b => b.dapat && LENCANA_SIMPAN.has(b.k)).map(b => b.k));
+const kurangGerak = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function konfeti() {
+  if (kurangGerak()) return;
+  const box = el("div", { class: "konfeti", "aria-hidden": "true" });
+  const warna = ["var(--gold)", "var(--accent)", "var(--c-quran)", "var(--c-solat)", "var(--c-yasin)"];
+  for (let i = 0; i < 44; i++) {
+    const c = el("i"); const st = c.style;
+    st.left = (Math.random() * 100) + "vw"; st.background = warna[i % warna.length];
+    st.setProperty("--dx", (Math.random() * 160 - 80) + "px"); st.setProperty("--rot", (Math.random() * 900 - 450) + "deg");
+    st.animationDelay = (Math.random() * .35) + "s"; st.animationDuration = (1.6 + Math.random() * .9) + "s";
+    if (i % 3 === 0) st.borderRadius = "50%";
+    box.append(c);
+  }
+  document.body.append(box); setTimeout(() => box.remove(), 3200);
+}
+function raikan(s) {
+  const kini = lencanaAda(s), lama = s._lencana || new Set(); s._lencana = kini;
+  const baru = lencana(s).filter(b => kini.has(b.k) && !lama.has(b.k));
+  if (!baru.length) return false;
+  konfeti(); toast("Tahniah, " + pendek(s.nama) + " dapat lencana " + baru.map(b => b.nama).join(" & "), "lama");
+  return true;
+}
 function gagal(err) { console.error(err); toast("Gagal simpan: " + (err?.message || "ralat tidak diketahui")); }
 const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 const dmy = s => s.split("-").reverse().join("/");
@@ -135,6 +166,7 @@ async function ambilKelas(kid) {
     state.bacaanReady = !eb;
     for (const s of murid) s.bacaan = eb ? [] : bl.filter(b => b.murid_id === s.id);
   }
+  for (const s of murid) s._lencana = lencanaAda(s);   // titik mula: lencana yang dah ada tak diraikan semula
   const { data: ses, error: ey } = await sb.from("yasin_sesi").select("id,tarikh,yasin_tidak_hadir(murid_id)").eq("kelas_id", kid);
   if (ey) throw ey;
   const yasin = {};
@@ -213,25 +245,25 @@ const current = () => state.murid.find(s => s.id === state.sid) || state.murid[0
 const pct = v => v == null ? "-" : Math.round(v) + "%";
 
 // ---------- simpan ----------
-async function simpanSolat(s) { const { error } = await sb.from("penilaian_solat").upsert({ murid_id: s.id, rukun: s.solat, ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+async function simpanSolat(s) { const { error } = await sb.from("penilaian_solat").upsert({ murid_id: s.id, rukun: s.solat, ...stamp() }); error ? gagal(error) : (raikan(s) || toast("Disimpan", true), rekodSejarah(s)); }
 async function simpanQuran(s) {
   const { hafazan_surah, ...q } = s.quran; const row = { murid_id: s.id, ...q, ...stamp() };
   if (state.bacaanReady) row.hafazan_surah = hafazan_surah;   // lajur ini wujud selepas kemas-kini-03
-  const { error } = await sb.from("penilaian_quran").upsert(row); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+  const { error } = await sb.from("penilaian_quran").upsert(row); error ? gagal(error) : (raikan(s) || toast("Disimpan", true), rekodSejarah(s)); }
 const tahapDari = b => !b ? null : b.jenis === "iqra" ? (b.jilid <= 3 ? 0 : 1) : (b.muka_surat >= 604 ? 5 : juzDariMs(b.muka_surat) <= 10 ? 2 : juzDariMs(b.muka_surat) <= 20 ? 3 : 4);
 const posisi = b => !b ? "Belum direkod" : b.jenis === "iqra" ? "Iqra' " + b.jilid + " · ms " + b.muka_surat : "Al-Quran · Juz " + juzDariMs(b.muka_surat) + " · ms " + b.muka_surat;
 async function simpanBacaan(s, b) {
   const { data, error } = await sb.from("bacaan_log").insert({ murid_id: s.id, ...b, direkod_oleh: state.me.id }).select("id,murid_id,tarikh,jenis,jilid,muka_surat,catatan").single();
   if (error) return gagal(error);
   s.bacaan = [data, ...(s.bacaan || [])];
-  const t = tahapDari(data); if (t != null && t !== s.quran.tahap) { s.quran.tahap = t; await simpanQuran(s); } else toast("Bacaan direkod");
+  const t = tahapDari(data); if (t != null && t !== s.quran.tahap) { s.quran.tahap = t; await simpanQuran(s); } else toast("Bacaan direkod", true);
   render();
 }
 async function padamBacaan(s, id) {
   const { error } = await sb.from("bacaan_log").delete().eq("id", id); if (error) return gagal(error);
-  s.bacaan = s.bacaan.filter(b => b.id !== id); toast("Rekod dipadam"); render();
+  s.bacaan = s.bacaan.filter(b => b.id !== id); s._lencana = lencanaAda(s); toast("Rekod dipadam", true); render();
 }
-async function simpanTP(s, i) { const { error } = await sb.from("penilaian_tp").upsert({ murid_id: s.id, bidang: BIDANG[i], tp: s.tp[i], ...stamp() }); error ? gagal(error) : (toast("Disimpan"), rekodSejarah(s)); }
+async function simpanTP(s, i) { const { error } = await sb.from("penilaian_tp").upsert({ murid_id: s.id, bidang: BIDANG[i], tp: s.tp[i], ...stamp() }); error ? gagal(error) : (raikan(s) || toast("Disimpan", true), rekodSejarah(s)); }
 // Gambaran markah sehari sekali (baris terakhir hari itu menang) untuk graf perkembangan
 const r1 = v => v == null ? null : Math.round(v * 10) / 10;
 async function rekodSejarah(s) {
@@ -280,7 +312,7 @@ function lencana(s, ctx = {}) {
   ];
 }
 function nombor1Id() { let best = null, bv = -1; for (const s of state.murid) { const t = scores(s).total; if (t != null && t > bv) { bv = t; best = s.id; } } return best; }
-async function simpanCatatan(s) { const { error } = await sb.from("catatan_guru").upsert({ murid_id: s.id, catatan: s.catatan.slice(0, 2000), ...stamp() }); error ? gagal(error) : toast("Disimpan"); }
+async function simpanCatatan(s) { const { error } = await sb.from("catatan_guru").upsert({ murid_id: s.id, catatan: s.catatan.slice(0, 2000), ...stamp() }); error ? gagal(error) : toast("Disimpan", true); }
 async function pastikanSesi(tarikh) {
   if (state.yasin[tarikh]) return state.yasin[tarikh];
   const { data, error } = await sb.from("yasin_sesi").insert({ kelas_id: state.kelas, tarikh, direkod_oleh: state.me.id }).select("id").single();
@@ -295,7 +327,7 @@ async function toggleHadir(tarikh, mid) {
     : await sb.from("yasin_tidak_hadir").insert({ sesi_id: ses.id, murid_id: mid });
   if (error) return gagal(error);
   ses.absent = out ? ses.absent.filter(x => x !== mid) : [...ses.absent, mid];
-  toast("Kehadiran disimpan"); render();
+  toast("Kehadiran disimpan", true); render();
 }
 
 // ---------- paparan ----------
@@ -510,7 +542,7 @@ const views = {
         el("p", { class: "hint" }, rec ? "Semua murid dikira hadir. Tekan nama murid yang tidak hadir." : "Jumaat ini belum direkod. Tekan nama yang tidak hadir, atau terus simpan."),
         el("div", { class: "att" }, list.map(s => { const out = abs.includes(s.id);
           return el("button", { class: out ? "absent" : "", "aria-pressed": String(out), onclick: () => toggleHadir(date, s.id) }, el("span", {}, s.nama), el("span", { class: "pill " + (out ? "low" : "ok") }, out ? "Tidak hadir" : "Hadir")); })),
-        rec ? null : el("div", {}, el("button", { class: "btn", onclick: async () => { if (await pastikanSesi(date)) { toast("Kehadiran disimpan"); render(); } } }, "Simpan: semua hadir"))),
+        rec ? null : el("div", {}, el("button", { class: "btn", onclick: async () => { if (await pastikanSesi(date)) { toast("Kehadiran disimpan", true); render(); } } }, "Simpan: semua hadir"))),
       el("div", { class: "card" }, el("strong", {}, "Peratus kehadiran setiap murid"),
         el("p", { class: "hint" }, "Disusun dari kehadiran paling rendah. Bawah 75% ditanda untuk tindakan."),
         el("div", { class: "tblwrap" }, el("table", {},

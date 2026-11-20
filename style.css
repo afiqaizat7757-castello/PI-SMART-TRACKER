@@ -238,3 +238,17 @@ nav.tabs button[aria-selected=true]{background:var(--sec,var(--accent));border-c
 .schip{font:inherit;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:5px 11px;cursor:pointer}
 .schip.on{background:var(--c-quran);border-color:var(--c-quran);color:var(--on-accent);font-weight:600}
 @media (prefers-reduced-motion:no-preference){.schip.on{animation:pop .25s ease-out}}
+
+/* ---------- animasi: tick simpan & konfeti lencana ---------- */
+.toast{display:flex;align-items:center;gap:8px;z-index:60;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box}
+.toast .tk{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--on-accent);flex:none}
+.konfeti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:50}
+.konfeti i{position:absolute;top:-14px;width:8px;height:12px;border-radius:2px;opacity:0;animation:jatuh 2s cubic-bezier(.25,.6,.45,1) forwards}
+@keyframes jatuh{0%{opacity:1;transform:translate(0,0) rotate(0)}85%{opacity:1}100%{opacity:0;transform:translate(var(--dx),105vh) rotate(var(--rot))}}
+@media (prefers-reduced-motion:no-preference){
+  .toast.in{animation:naik .28s cubic-bezier(.3,1.4,.5,1)}
+  @keyframes naik{from{opacity:0;transform:translate(-50%,14px) scale(.96)}to{opacity:1;transform:translate(-50%,0)}}
+  .toast.in .tk{animation:pop .35s .08s ease-out both}
+  .toast.in .tk path{stroke-dasharray:24;stroke-dashoffset:24;animation:lukis .3s .18s ease-out forwards}
+  @keyframes lukis{to{stroke-dashoffset:0}}
+}
